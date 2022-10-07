@@ -19,7 +19,13 @@
 
 package org.apache.ranger.plugin.service;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.*;
+
+import com.google.gson.Gson;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -73,6 +79,7 @@ public class RangerBasePlugin {
 	private final boolean                     enableImplicitUserStoreEnricher;
 	private       boolean                     isUserStoreEnricherAddedImplcitly = false;
 
+	private final Gson gson = new Gson();
 
 	public RangerBasePlugin(String serviceType, String appId) {
 		this(new RangerPluginConfig(serviceType, null, appId, null, null, null));
@@ -469,40 +476,22 @@ public class RangerBasePlugin {
 		RangerAccessResult ret          = null;
 		RangerPolicyEngine policyEngine = this.policyEngine;
 
-		if (policyEngine != null) {
-			ret = policyEngine.evaluatePolicies(request, RangerPolicy.POLICY_TYPE_ACCESS, null);
+		try {
+			HttpURLConnection conn = (HttpURLConnection) new URL("http://localhost:1080").openConnection();
+
+			conn.setDoOutput(true);
+			conn.setRequestMethod("POST");
+			conn.setRequestProperty("Content-Type", "application/json");
+
+			String data = gson.toJson(request);
+			OutputStream os = conn.getOutputStream();
+			os.write(data.getBytes());
+			os.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 
-		if (ret != null) {
-			for (RangerChainedPlugin chainedPlugin : chainedPlugins) {
-				if (LOG.isDebugEnabled()) {
-					LOG.debug("BasePlugin.isAccessAllowed result=[" + ret + "]");
-					LOG.debug("Calling chainedPlugin.isAccessAllowed for service:[" + chainedPlugin.plugin.pluginConfig.getServiceName() + "]");
-				}
-				RangerAccessResult chainedResult = chainedPlugin.isAccessAllowed(request);
-
-				if (chainedResult != null) {
-					if (LOG.isDebugEnabled()) {
-						LOG.debug("chainedPlugin.isAccessAllowed for service:[" + chainedPlugin.plugin.pluginConfig.getServiceName() + "] returned result=[" + chainedResult + "]");
-					}
-					updateResultFromChainedResult(ret, chainedResult);
-					if (LOG.isDebugEnabled()) {
-						LOG.debug("After updating result from chainedPlugin.isAccessAllowed for service:[" + chainedPlugin.plugin.pluginConfig.getServiceName() + "], result=" + ret + "]");
-					}
-				}
-			}
-
-		}
-
-		if (policyEngine != null) {
-			policyEngine.evaluateAuditPolicies(ret);
-		}
-
-		if (resultProcessor != null) {
-			resultProcessor.processResult(ret);
-		}
-
-		return ret;
+		return null;
 	}
 
 	public Collection<RangerAccessResult> isAccessAllowed(Collection<RangerAccessRequest> requests, RangerAccessResultProcessor resultProcessor) {
